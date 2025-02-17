@@ -1,0 +1,122 @@
+import pandas as pd
+import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import classification_report
+import string
+import nltk
+from nltk.tokenize import word_tokenize
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
+import re
+
+# Download required NLTK data
+nltk.download('punkt')
+nltk.download('stopwords')
+nltk.download('wordnet')
+
+# Read the data
+df = pd.read_csv("Filtered_Data.csv")
+
+# Initialize preprocessing tools
+lemmatizer = WordNetLemmatizer()
+stop_words = set(stopwords.words('english'))
+
+# Preprocessing function
+def preprocess_text(text):
+    # Convert to lowercase
+    text = text.lower()
+    
+    # Remove punctuation
+    text = text.translate(str.maketrans('', '', string.punctuation))
+    
+    # Remove numbers
+    text = re.sub(r'\d+', '', text)
+    
+    # Tokenize
+    tokens = word_tokenize(text)
+    
+    # Remove stopwords and lemmatize
+    processed_tokens = [lemmatizer.lemmatize(token) for token in tokens if token not in stop_words]
+    
+    return ' '.join(processed_tokens)
+
+# Preprocess all sentences
+df['processed_text'] = df['Sentence'].apply(preprocess_text)
+
+# Keep only Positive and Neutral data
+df = df[df['Sentiment'].isin(['Positive', 'Neutral'])]
+
+# Convert to lists
+X = df['processed_text'].tolist()
+y = df['Sentiment'].tolist()
+
+# Split the data
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Create and fit TF-IDF vectorizer
+tfidf = TfidfVectorizer(max_features=5000, ngram_range=(1, 2))
+X_train_tfidf = tfidf.fit_transform(X_train)
+X_test_tfidf = tfidf.transform(X_test)
+
+# Apply Standard Scaler
+scaler = StandardScaler(with_mean=False)  # with_mean=False since TF-IDF is sparse
+X_train_tfidf = scaler.fit_transform(X_train_tfidf)
+X_test_tfidf = scaler.transform(X_test_tfidf)
+
+# Find best K value
+from sklearn.metrics import accuracy_score
+
+scores = []
+for i in range(1, 16):
+    knn = KNeighborsClassifier(n_neighbors=i, metric='cosine')
+    knn.fit(X_train_tfidf, y_train)
+    y_pred = knn.predict(X_test_tfidf)
+    scores.append(accuracy_score(y_test, y_pred))
+
+best_k = np.argmax(scores) + 1
+print(f"Best K value: {best_k}")
+
+# Train KNN model with best K
+knn = KNeighborsClassifier(n_neighbors=best_k, metric='cosine')
+knn.fit(X_train_tfidf, y_train)
+
+# Make predictions
+y_pred = knn.predict(X_test_tfidf)
+
+# Print classification report
+print("\nClassification Report:")
+print(classification_report(y_test, y_pred))
+
+# Select 5 sentences from dataset
+dataset_sentences = df['Sentence'].sample(5, random_state=42).tolist()
+
+# Create 5 negative sentences manually
+negative_sentences = [
+    "This is the worst experience I have ever had.",
+    "I absolutely hate this product, it's terrible.",
+    "The quality is so bad, I regret buying it.",
+    "Worst customer service, very disappointing.",
+    "This product is a complete waste of money."
+]
+
+# Combine test sentences
+test_sentences = dataset_sentences + negative_sentences
+
+# Preprocess test sentences
+processed_test_sentences = [preprocess_text(sentence) for sentence in test_sentences]
+
+# Transform test sentences
+test_tfidf = tfidf.transform(processed_test_sentences)
+test_tfidf = scaler.transform(test_tfidf)
+
+# Get predictions
+test_predictions = knn.predict(test_tfidf)
+
+# Print results
+print("\nTest Results:")
+for sentence, prediction in zip(test_sentences, test_predictions):
+    print(f"\nText: {sentence}")
+    print(f"Predicted Sentiment: {prediction}")
