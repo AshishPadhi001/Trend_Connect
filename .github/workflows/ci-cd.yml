@@ -1,0 +1,86 @@
+# .github/workflows/ci-cd.yml
+name: TrendConnect FastAPI CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Run TrendConnect Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+      
+      - name: Set Up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio httpx
+      
+      - name: Run Tests
+        run: |
+          python -m pytest testing/ -v --asyncio-mode=auto
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          TESTING: "True"
+
+  build-and-push:
+    name: Build & Push TrendConnect Docker Image
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      
+      - name: Build and Push
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/trendconnect:latest
+          cache-from: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/trendconnect:buildcache
+          cache-to: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/trendconnect:buildcache,mode=max
+
+  deploy:
+    name: Deploy TrendConnect to Local
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+        
+      - name: Deploy to Local
+        run: |
+          docker pull ${{ secrets.DOCKER_USERNAME }}/trendconnect:latest
+          docker-compose down || true
+          docker-compose up -d
+          
+      - name: Health Check
+        run: |
+          sleep 10
+          curl -f http://localhost:8000/health || exit 1

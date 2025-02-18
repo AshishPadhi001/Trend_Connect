@@ -40,3 +40,9 @@ app.include_router(profile_routes.router)
 
 # Register API Routes for Follow / Unfollow
 app.include_router(follow_routes.router)
+
+#HEalth check
+@app.get("/health", tags=["Health"])
+async def health_check():
+    return {"status": "healthy", "service": "TrendConnect"}
+
