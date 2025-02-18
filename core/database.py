@@ -1,20 +1,20 @@
-##Database.py
-
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
-from configuration.config import DATABASE_URL
+from configuration.config import settings  # Import settings instead of DATABASE_URL
 
-#database url
-SQLALCHEMY_DATABASE_URL = DATABASE_URL
+# Use settings to get the database URL
+SQLALCHEMY_DATABASE_URL = settings.DATABASE_URL
 
-#Create the engine
+# Create the engine
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 
-#Create the local session
+# Create the local session
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# Base class for models
 Base = declarative_base()
 
-#Close Local session
+# Dependency to get the database session
 def get_db():
     db = SessionLocal()
     try:
